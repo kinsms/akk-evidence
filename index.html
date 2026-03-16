@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AKK-EVIDENCE Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; background-color: #f8fafc; color: #1e293b; }
+        .vas-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 10px; background: #e2e8f0; border-radius: 5px; outline: none; }
+        .vas-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 34px; height: 34px; background: #ffffff; border: 4px solid #2563eb; border-radius: 50%; cursor: pointer; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body class="p-4 flex flex-col items-center min-h-screen">
+
+    <div id="app" class="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl shadow-slate-200 border border-slate-100 p-8 my-4 flex flex-col min-h-[600px]">
+        <!-- プログラムで内容を描画します -->
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. 基本設定：ここにGASのURLを貼り付けてください
+        // ==========================================
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwwY4VSs0XNhoe8kSKVD72rM00yTJpjFOzY6wauLRxRN6SWA6X-Ndz-MgHOR2Kr1kZC/exec
+"; 
+        const START_DATE = new Date("2026/03/28");
+        const SUBJECTS = Array.from({ length: 15 }, (_, i) => `被験者${String(i + 1).padStart(2, '0')}`);
+
+        // ==========================================
+        // 2. 状態管理（データ衝突を回避するために「v16」に更新）
+        // ==========================================
+        const KEY_USER = 'akk_user_v16';
+        const KEY_DONE = 'akk_done_v16';
+        const KEY_DATE = 'akk_date_v16';
+
+        let userName = localStorage.getItem(KEY_USER) || "";
+        let completedTasks = {};
+        
+        try {
+            completedTasks = JSON.parse(localStorage.getItem(KEY_DONE) || "{}");
+        } catch(e) {
+            completedTasks = {};
+        }
+
+        let lastDate = localStorage.getItem(KEY_DATE) || "";
+        let currentMode = null;
+        let touchedIndices = new Set();
+
+        const todayStr = new Date().toLocaleDateString('ja-JP');
+        if (lastDate !== todayStr) {
+            completedTasks = {};
+            localStorage.setItem(KEY_DONE, "{}");
+            localStorage.setItem(KEY_DATE, todayStr);
+        }
+
+        // 画像の定義を100%再現
+        const VAS_DEFS = {
+            "朝食前": [
+                { name: "今の空腹感はどのくらいですか？", left: "全く空腹ではない", right: "これ以上ないほど空腹" },
+                { name: "今、食べ物のことで頭がいっぱい（執着）ですか？", left: "全く考えていない", right: "それしか考えられない" }
+            ],
+            "夕食直前": [
+                { name: "今の空腹感はどのくらいですか？", left: "全く空腹ではない", right: "これ以上ないほど空腹" },
+                { name: "今、食べ物のことで頭がいっぱい（執着）ですか？", left: "全く考えていない", right: "それしか考えられない" }
+            ],
+            "夕食直後": [
+                { name: "今、お腹はいっぱい（満腹）ですか？", left: "全く満腹ではない", right: "これ以上ないほど満腹" },
+                { name: "今からどれくらい食べられそうですか？", left: "全く食べられそうにない", right: "非常にたくさん食べられそう" },
+                { name: "今の食事に対する満足感（充足感）はどのくらいですか？", left: "全く満足していない", right: "非常に満足している" }
+            ],
+            "夕食2時間後": [
+                { name: "食事から2時間経ちましたが、まだ満腹感は続いていますか？（腹持ち）", left: "全く続いていない", right: "しっかり続いている" },
+                { name: "今からどれくらい食べられそうですか？", left: "全く食べられそうにない", right: "非常にたくさん食べられそう" },
+                { name: "今、何か甘いものやスナック菓子を食べたい欲求（間食欲）はありますか？", left: "全くない", right: "猛烈にある" }
+            ]
+        };
+
+        function getDayStatus() {
+            const diffDays = Math.floor((new Date().setHours(0,0,0,0) - START_DATE.setHours(0,0,0,0)) / 86400000) + 1;
+            return diffDays <= 0 ? `Baseline` : `Day ${diffDays}`;
+        }
+
+        // ==========================================
+        // 3. 画面の描画
+        // ==========================================
+        function render() {
+            const app = document.getElementById('app');
+            if (!userName) {
+                renderSetup(app);
+            } else if (currentMode) {
+                renderForm(app);
+            } else {
+                renderDashboard(app);
+            }
+        }
+
+        function renderSetup(el) {
+            el.innerHTML = `
+                <div class="flex flex-col items-center justify-center flex-grow py-10">
+                    <h2 class="text-2xl font-black text-slate-900 mb-8">被験者登録</h2>
+                    <select id="userSelect" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-lg font-bold mb-6">
+                        <option value="" disabled selected>お名前を選択</option>
+                        ${SUBJECTS.map(s => `<option value="${s}">${s}</option>`).join('')}
+                    </select>
+                    <button onclick="saveUser()" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-lg">開始する</button>
+                </div>
+            `;
+        }
+
+        function renderDashboard(el) {
+            el.innerHTML = `
+                <header class="flex justify-between items-start mb-10">
+                    <div>
+                        <h1 class="text-2xl font-black text-slate-900 tracking-tighter">AKK-EVIDENCE</h1>
+                        <p class="text-blue-600 font-bold text-[10px] mt-1 uppercase tracking-widest">${userName}</p>
+                    </div>
+                    <div class="bg-slate-900 text-white text-[10px] font-black px-4 py-2 rounded-full shadow-lg">${getDayStatus()}</div>
+                </header>
+                <div class="space-y-4 flex-grow">
+                    ${Object.keys(VAS_DEFS).map(mode => {
+                        const done = completedTasks[mode];
+                        return `
+                        <button onclick="${done ? '' : `setMode('${mode}')`}" 
+                            class="w-full flex items-center justify-between p-6 rounded-[2rem] border transition-all ${done ? 'bg-slate-50 border-slate-50 opacity-40 cursor-default' : 'bg-white border-slate-100 shadow-sm active:scale-95 active:bg-slate-50'}">
+                            <span class="font-black text-slate-800 text-lg">${mode}</span>
+                            ${done ? '<span class="text-emerald-500 font-bold text-sm">✅ 送信済み</span>' : '<span class="text-slate-200 text-xl font-bold">＞</span>'}
+                        </button>`;
+                    }).join('')}
+                </div>
+                <button onclick="changeUser()" class="mt-10 text-[10px] text-slate-300 font-bold text-center w-full uppercase tracking-widest">登録名を変更する</button>
+            `;
+        }
+
+        function renderForm(el) {
+            const defs = VAS_DEFS[currentMode];
+            const isNight = currentMode === "夕食2時間後";
+            el.innerHTML = `
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-xl font-black text-slate-900">${currentMode}</h2>
+                    <button onclick="cancelMode()" class="text-slate-300 hover:text-slate-900 transition-colors">✕</button>
+                </div>
+                <div class="space-y-12 mb-10" id="vas-fields">
+                    ${defs.map((d, i) => `
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-end px-1">
+                                <label class="font-black text-slate-700 text-[13px] leading-tight w-3/4">${d.name}</label>
+                                <span id="val-${i}" class="text-4xl font-black text-blue-600 italic tracking-tighter">--</span>
+                            </div>
+                            <div class="px-2">
+                                <div class="flex justify-between text-[11px] font-black text-slate-200 mb-1 px-1">
+                                    <span>0</span><span>50</span><span>100</span>
+                                </div>
+                                <input type="range" min="0" max="100" value="50" oninput="updateVal(${i}, this.value)" class="vas-slider">
+                                <div class="flex justify-between text-[10px] font-black text-slate-400 mt-2 gap-4">
+                                    <span class="w-1/3 text-left leading-tight font-bold">${d.left}</span>
+                                    <span class="w-1/3 text-center text-blue-200 leading-tight">どちらとも<br>いえない</span>
+                                    <span class="w-1/3 text-right leading-tight font-bold">${d.right}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                ${isNight ? `
+                <div id="survey-section" class="border-t border-slate-100 pt-10 space-y-8 pb-20">
+                    <h3 class="font-black text-blue-600 text-lg border-b-4 border-blue-50 pb-2 inline-block">本日の調査報告</h3>
+                    <div class="space-y-4">
+                        <label class="text-[13px] font-black text-slate-500 block leading-relaxed">2. 本日のサプリメントを摂取しましたか？</label>
+                        <select id="q_intake" onchange="document.getElementById('reason_box').classList.toggle('hidden', this.value !== '飲んでいない')" class="w-full p-4 bg-slate-50 border-2 border-slate-50 rounded-2xl font-bold">
+                            <option>飲んだ</option>
+                            <option>飲んでいない</option>
+                        </select>
+                        <div id="reason_box" class="hidden mt-4 p-5 bg-red-50 rounded-2xl border border-red-100 space-y-3">
+                            <p class="text-[11px] font-bold text-red-600 italic leading-relaxed">2.1 飲めなかった理由を教えてください</p>
+                            <select id="q_intake_reason" class="w-full p-4 bg-white border border-red-200 rounded-xl text-sm font-bold">
+                                <option>飲み忘れ</option><option>体調不良</option><option>外出</option><option>多忙のため</option><option>その他</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <label class="text-[13px] font-black text-slate-500 block leading-relaxed">3. カロミル以外に、間食をしましたか？</label>
+                        <select id="q_snack" class="w-full p-4 bg-slate-50 rounded-2xl font-bold">
+                            <option>とらなかった</option><option>1回とった</option><option>2回とった</option><option>3回以上とった</option>
+                        </select>
+                    </div>
+                    <div class="space-y-6">
+                        <p class="text-[13px] font-black text-slate-600 border-l-4 border-blue-200 pl-3 py-1">4. お腹の調子（排便状況）</p>
+                        <div class="space-y-4 pl-2 text-[11px] font-bold text-slate-400">4.1 本日、排便はありましたか？</div>
+                        <select id="q_bowel_count" class="w-full p-4 bg-slate-50 rounded-2xl font-bold"><option>なし</option><option>1回</option><option>2回以上</option></select>
+                        <div class="space-y-4 pl-2 text-[11px] font-bold text-slate-400">4.2 昨日までと違う変化はありましたか？</div>
+                        <select id="q_bowel_status" class="w-full p-4 bg-slate-50 rounded-2xl font-bold text-xs"><option>特に変わりない</option><option>改善した</option><option>気になる変化がある</option></select>
+                    </div>
+                    <div class="space-y-6">
+                        <p class="text-[13px] font-black text-slate-600 border-l-4 border-red-200 pl-3 py-1">5. 有害事象</p>
+                        <select id="q_adverse" onchange="document.getElementById('adverse_box').classList.toggle('hidden', this.value !== 'あり')" class="w-full p-4 bg-slate-50 rounded-2xl font-bold"><option>特になし</option><option>あり</option></select>
+                        <div id="adverse_box" class="hidden mt-4 space-y-2">
+                            <textarea id="q_adverse_detail" class="w-full p-4 bg-white border border-blue-200 rounded-xl text-sm h-32" placeholder="詳細を入力"></textarea>
+                        </div>
+                    </div>
+                    <textarea id="q_comment" class="w-full p-4 bg-slate-50 rounded-3xl h-40 text-sm font-medium" placeholder="自由記述欄（気づいたことなど）"></textarea>
+                </div>` : ''}
+                <div class="mt-8 sticky bottom-0 bg-white pb-6 pt-4 border-t border-slate-50">
+                    <button id="submitBtn" onclick="submitData()" disabled class="w-full bg-blue-600 text-white font-black py-5 rounded-[2rem] shadow-xl opacity-30 transition-all">スライダーを動かして入力</button>
+                </div>
+            `;
+        }
+
+        // --- 動作 ---
+        window.saveUser = () => {
+            const val = document.getElementById('userSelect').value;
+            if (!val) return;
+            userName = val;
+            localStorage.setItem(KEY_USER, val);
+            render();
+        };
+
+        window.changeUser = () => {
+            if(confirm("登録名を変更しますか？")){
+                localStorage.removeItem(KEY_USER);
+                userName = "";
+                render();
+            }
+        };
+
+        window.setMode = (m) => {
+            currentMode = m;
+            touchedIndices = new Set();
+            render();
+            window.scrollTo(0, 0);
+        };
+
+        window.cancelMode = () => {
+            currentMode = null;
+            render();
+        };
+
+        window.updateVal = (idx, val) => {
+            document.getElementById(`val-${idx}`).innerText = val;
+            touchedIndices.add(idx);
+            const btn = document.getElementById('submitBtn');
+            if (touchedIndices.size === VAS_DEFS[currentMode].length) {
+                btn.disabled = false;
+                btn.innerText = "データを確定して送信";
+                btn.classList.remove('opacity-30');
+            }
+        };
+
+        window.submitData = async () => {
+            if (!WEB_APP_URL) return alert("URL未設定です");
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.innerText = "送信中...";
+
+            const payload = {
+                name: userName, dayText: getDayStatus(), type: currentMode,
+                val1: document.querySelector('input[type="range"]:nth-of-type(1)')?.value,
+                val2: document.querySelector('input[type="range"]:nth-of-type(2)')?.value,
+                val3: document.querySelector('input[type="range"]:nth-of-type(3)')?.value || null,
+                intake: document.getElementById('q_intake')?.value || '',
+                intakeReason: document.getElementById('q_intake_reason')?.value || '',
+                snack: document.getElementById('q_snack')?.value || '',
+                bowelCount: document.getElementById('q_bowel_count')?.value || '',
+                bowelStatus: document.getElementById('q_bowel_status')?.value || '',
+                adverseEvent: document.getElementById('q_adverse')?.value || '',
+                adverseDetail: document.getElementById('q_adverse_detail')?.value || '',
+                freeComment: document.getElementById('q_comment')?.value || ''
+            };
+
+            try {
+                await fetch(WEB_APP_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+                completedTasks[currentMode] = true;
+                localStorage.setItem(KEY_DONE, JSON.stringify(completedTasks));
+                alert("送信が完了しました！");
+                currentMode = null;
+                render();
+            } catch (e) {
+                alert("送信に失敗しました");
+                btn.disabled = false;
+                btn.innerText = "データを確定して送信";
+            }
+        };
+
+        render();
+    </script>
+</body>
+</html>
