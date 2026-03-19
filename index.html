@@ -31,16 +31,17 @@
         
         const SUBJECTS = [
             "石河和美", "枝常拓", "大畑一真（ズマ）", "佐野康倫", "清水あやか", 
-            "鷲見沙織", "関田越子", "長尾優斗", "本多駿", "皆川望帆", "安田まゆか"
+            "鷲見沙織", "関田越子", "長尾優斗", "本多駿", "皆川望帆", "安田まゆか",
+            "管理者用テストID"
         ];
 
         // ==========================================
-        // 2. 状態管理（v19.0 Stable）
+        // 2. 状態管理（v19.3 Stable）
         // ==========================================
-        const VERSION = "19.0";
-        const KEY_USER = 'akk_u_190';
-        const KEY_DONE = 'akk_d_190';
-        const KEY_DATE = 'akk_t_190';
+        const VERSION = "19.3";
+        const KEY_USER = 'akk_u_193';
+        const KEY_DONE = 'akk_d_193';
+        const KEY_DATE = 'akk_t_193';
 
         let userName = localStorage.getItem(KEY_USER) || "";
         let tempSelectedName = ""; 
@@ -57,7 +58,6 @@
             localStorage.setItem(KEY_DATE, todayStr);
         }
 
-        // 表に基づいたVAS定義の修正
         const VAS_DEFS = {
             "朝食前": [
                 {n:"今の空腹感はどのくらいですか？", l:"全く空腹ではない", r:"これ以上ないほど空腹"},
@@ -118,7 +118,7 @@
 
             if (currentMode) {
                 const defs = VAS_DEFS[currentMode];
-                const isNight = currentMode === "夕食2時間後";
+                const isNight = (currentMode === "夕食2時間後");
                 app.innerHTML = `
                     <div class="w-full flex flex-col min-h-full">
                         <div class="flex justify-between items-center mb-8">
@@ -201,7 +201,7 @@
                 </div>`;
         }
 
-        // --- ロジック ---
+        // --- アクション ---
         window.checkUser = () => { const v = document.getElementById('uSelect').value; if (!v) return; tempSelectedName = v; render(); };
         window.saveUser = () => { if (!tempSelectedName) return; userName = tempSelectedName; localStorage.setItem(KEY_USER, userName); render(); };
         window.resetApp = () => { if(confirm("初期登録をやり直しますか？")){ localStorage.removeItem(KEY_USER); localStorage.removeItem(KEY_DONE); userName = ""; tempSelectedName = ""; location.reload(); } };
@@ -209,11 +209,12 @@
         window.upd = (idx, val) => { document.getElementById(`v-${idx}`).innerText = val; touchedSet.add(idx); if (touchedSet.size === VAS_DEFS[currentMode].length) { const b = document.getElementById('sBtn'); if (b) { b.disabled = false; b.classList.remove('opacity-30'); } } };
 
         window.send = async () => {
-            if (!WEB_APP_URL) return alert("URL未設定です。コードの16行目を確認してください。");
+            if (!WEB_APP_URL) return alert("URL未設定です。");
+            const modeAtSend = currentMode; // タイミングを保持
             const btn = document.getElementById('sBtn'); btn.disabled = true; btn.innerText = "送信中...";
             const ranges = document.querySelectorAll('input[type="range"]');
             const payload = {
-                name: userName, dayText: getDayText(), type: currentMode,
+                name: userName, dayText: getDayText(), type: modeAtSend,
                 val1: ranges[0]?.value || "",
                 val2: ranges[1]?.value || "",
                 val3: ranges[2]?.value || "",
@@ -230,12 +231,16 @@
 
             try {
                 await fetch(WEB_APP_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
-                completedTasks[currentMode] = true; localStorage.setItem(KEY_DONE, JSON.stringify(completedTasks));
-                if (currentMode === "夕食2時間後") {
-                    alert("送信が完了しました！明日もよろしくお願いいたします。");
+                completedTasks[modeAtSend] = true; 
+                localStorage.setItem(KEY_DONE, JSON.stringify(completedTasks));
+                
+                // メッセージの条件分岐（確実に反映させるため変数を使用）
+                if (modeAtSend === "夕食2時間後") {
+                    alert("お疲れ様でした。明日もよろしくお願いします！");
                 } else {
-                    alert("送信が完了しました！");
+                    alert("送信完了しました");
                 }
+                
                 currentMode = null; render();
             } catch (e) { alert("送信エラーが発生しました。"); btn.disabled = false; btn.innerText = "データを送信する"; }
         };
