@@ -21,7 +21,7 @@
     <!-- 送信中オーバーレイ -->
     <div id="processing-overlay">
         <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-4"></div>
-        <p class="text-blue-600 font-bold">データを送信中...</p>
+        <p class="text-blue-600 font-bold text-center">個別と統合の両シートへ<br>データを同時送信中...</p>
     </div>
 
     <div id="app" class="w-full max-w-md bg-white rounded-[2rem] shadow-xl border border-slate-100 p-8 my-4 min-h-[600px] flex flex-col items-center">
@@ -33,23 +33,37 @@
 
     <script>
         // ==========================================
-        // 1. 設定
+        // 1. 送信先URLの設定（重要）
         // ==========================================
-        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw-ZIAfYdlPZ3IGwsUL-vfQuXujVXmb_LYSRheZ7qT-ySowGIQELavurTl9Bix93IMw/exec"; 
-        const START_DATE = new Date("2026/03/28");
         
-        const SUBJECTS = [
-            "石河和美", "枝常拓", "大畑一真（ズマ）", "佐野康倫", "清水あやか", 
-            "鷲見沙織", "関田越子", "長尾優斗", "本多駿", "皆川望帆", "安田まゆか",
-            "管理者用テストID"
-        ];
+        // 【A】管理者用：全員のデータが集まる「統合マスターシート」のURL
+        const MASTER_URL = "https://script.google.com/macros/s/AKfycbw-ZIAfYdlPZ3IGwsUL-vfQuXujVXmb_LYSRheZ7qT-ySowGIQELavurTl9Bix93IMw/exec";
+
+        // 【B】個人別：各人が閲覧するための専用シートURL
+        // 名前ごとに取得したGAS URLを貼り付けてください。
+        const WEB_APP_URLS = {
+            "石河和美": "https://script.google.com/macros/s/AKfycbw86qwQ--vsgUXPqxfrS7q_hIwWxxut8gcxottHQFciQxgA_E9QeZ9HBcJ8GEOEnZFI/exec",
+            "枝常拓": "https://script.google.com/macros/s/AKfycbz2Q3tQQhK5EFcQoZM8UDA2NJBxr8n1vIxdUOLXJh71cH99hmwS2NAqGL27hoABIgs9/exec",
+            "大畑一真（ズマ）": "https://script.google.com/macros/s/AKfycbw4iN6u8l43vZuJGYt5aEhq6vI0NehSePYJSHNtW1CQos1PVQwA1nMHp41mMYytdH5l/exec",
+            "佐野康倫": "https://script.google.com/macros/s/AKfycbwiKK023Bd0MvTpSZSXXNw3YzXhMJhgvgt---Ek8b8YCtwaTsGNL8KkKDqyRe3Wncv4/exec",
+            "清水あやか": "https://script.google.com/macros/s/AKfycbyNH3YIMOaSNLGnYv67M0zkdyGML9o7tmZwwkL97vsV_TW0JY9SMcnVLzYUBTdWkUbSdQ/exec",
+            "鷲見沙織": "https://script.google.com/macros/s/AKfycbzxCepAQ5q3pWEkLgZtXGcQzkvNQVXk2yQsOU7L58IKI7IoqMM5kKcFZhlpjUA9JbvJFg/exec",
+            "長尾優斗": "https://script.google.com/macros/s/AKfycbyXY-75yzQeko7Da8cXLIPG5hIkg4xt7QiGY3T58gQAfmh8RkIPl0FyVwaRXdZ510wi/exec",
+            "本多駿": "https://script.google.com/macros/s/AKfycbysgcUiJX83jghHHzMa7sWsV6DiTXu_PhpOryejyr5mqnMMIAmgpgQDV_RFld5yTn-c7Q/exec",
+            "皆川望帆": "https://script.google.com/macros/s/AKfycbwyZ1OFZ0XnFjt-PCeOgvFvjimYGdhKoFgCP0y4IXXUZHSHjV_Wv1n3X9-rMSjkNNpK/exec",
+            "安田まゆか": "https://script.google.com/macros/s/AKfycbxFW89mg7BWPuyzPk-SGQt4NJwCEXs7oeedHRXGGtV6BBJbj12Y_cp8Dywp_CSBpqYOvA/exec",
+            "管理者用テストID": "https://script.google.com/macros/s/AKfycbw-ZIAfYdlPZ3IGwsUL-vfQuXujVXmb_LYSRheZ7qT-ySowGIQELavurTl9Bix93IMw/exec" 
+        };
+
+        const START_DATE = new Date("2026/03/28");
+        const SUBJECTS = Object.keys(WEB_APP_URLS);
 
         // ==========================================
-        // 2. 状態管理（v21.3 重複ガード完結版）
+        // 2. 状態管理（v21.7 最終決定版）
         // ==========================================
-        const VERSION = "21.3";
-        const KEY_USER = 'akk_v21_user_name'; // 安定化のための新キー
-        const PREFIX_DONE = 'akk_v21_history_'; // 安定化のための新履歴キー
+        const VERSION = "21.7";
+        const KEY_USER = 'akk_v21_user_name'; 
+        const PREFIX_DONE = 'akk_v21_history_'; 
 
         let userName = localStorage.getItem(KEY_USER) || "";
         let tempSelectedName = ""; 
@@ -59,53 +73,30 @@
         let isProcessing = false;
 
         const VAS_DEFS = {
-            "朝食前": [
-                {n:"今の空腹感はどのくらいですか？", l:"全く空腹ではない", r:"これ以上ないほど空腹"},
-                {n:"今、食べ物のことで頭がいっぱい（執着）ですか？", l:"全く考えていない", r:"それしか考えられない"}
-            ],
-            "夕食直前": [
-                {n:"今の空腹感はどのくらいですか？", l:"全く空腹ではない", r:"これ以上ないほど空腹"},
-                {n:"今、食べ物のことで頭がいっぱい（執着）ですか？", l:"全く考えていない", r:"それしか考えられない"}
-            ],
-            "夕食直後": [
-                {n:"今、お腹はいっぱい（満腹）ですか？", l:"全く満腹ではない", r:"これ以上ないほど満腹"},
-                {n:"今の食事に対する満足感（充足感）はどのくらいですか？", l:"全く満足していない", r:"非常に満足している"},
-                {n:"今からどれくらい食べられそうですか？", l:"全く食べられそうにない", r:"非常にたくさん食べられそう"}
-            ],
-            "夕食2時間後": [
-                {n:"食事から2時間経ちましたが、まだ満腹感は続いていますか？（腹持ち）", l:"全く続いていない", r:"しっかり続いている"},
-                {n:"今からどれくらい食べられそうですか？", l:"全く食べられそうにない", r:"非常にたくさん食べられそう"},
-                {n:"今、何か甘いものやスナック菓子を食べたい欲求（間食欲）はありますか？", l:"全くない", r:"猛烈にある"}
-            ]
+            "朝食前": [{n:"今の空腹感はどのくらいですか？", l:"全く空腹ではない", r:"これ以上ないほど空腹"}, {n:"今、食べ物のことで頭がいっぱい（執着）ですか？", l:"全く考えていない", r:"それしか考えられない"}],
+            "夕食直前": [{n:"今の空腹感はどのくらいですか？", l:"全く空腹ではない", r:"これ以上ないほど空腹"}, {n:"今、食べ物のことで頭がいっぱい（執着）ですか？", l:"全く考えていない", r:"それしか考えられない"}],
+            "夕食直後": [{n:"今、お腹はいっぱい（満腹）ですか？", l:"全く満腹ではない", r:"これ以上ないほど満腹"}, {n:"今の食事に対する満足感（充足感）はどのくらいですか？", l:"全く満足していない", r:"非常に満足している"}, {n:"今からどれくらい食べられそうですか？", l:"全く食べられそうにない", r:"非常にたくさん食べられそう"}],
+            "夕食2時間後": [{n:"食事から2時間経ちましたが、まだ満腹感は続いていますか？（腹持ち）", l:"全く続いていない", r:"しっかり続いている"}, {n:"今からどれくらい食べられそうですか？", l:"全く食べられそうにない", r:"非常にたくさん食べられそう"}, {n:"今、何か甘いものやスナック菓子を食べたい欲求（間食欲）はありますか？", l:"全くない", r:"猛烈にある"}]
         };
 
-        // 統一された日付形式を生成 (YYYY/MM/DD)
         function getFormattedDate(offset = 0) {
             const d = new Date();
             d.setHours(0,0,0,0);
             d.setDate(d.getDate() + offset);
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${y}/${m}/${day}`;
+            return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
         }
 
         function getTargetInfo() {
             const dateStr = getFormattedDate(viewingOffset);
             const d = new Date(dateStr);
-            
-            const diffTime = d - START_DATE;
-            const diffDays = Math.floor(diffTime / 86400000) + 1;
+            const diffDays = Math.floor((d - START_DATE) / 86400000) + 1;
             const label = diffDays <= 0 ? "Baseline" : "Day " + diffDays;
-            const dayText = `${label} (${dateStr})`;
-            return { dateStr, dayText };
+            return { dateStr, dayText: `${label} (${dateStr})` };
         }
 
         function getCompletedTasks() {
             const dateStr = getFormattedDate(viewingOffset);
-            try {
-                return JSON.parse(localStorage.getItem(PREFIX_DONE + dateStr) || "{}");
-            } catch(e) { return {}; }
+            try { return JSON.parse(localStorage.getItem(PREFIX_DONE + dateStr) || "{}"); } catch(e) { return {}; }
         }
 
         function render() {
@@ -115,182 +106,47 @@
             
             if (!userName) {
                 if (!tempSelectedName) {
-                    app.innerHTML = `
-                        <div class="w-full py-10 text-center">
-                            <h2 class="text-2xl font-black mb-8 text-slate-800 border-b-4 border-blue-500 pb-2 inline-block font-sans">お名前を選択</h2>
-                            <p class="text-slate-500 text-sm mb-6 font-bold">ご自身のお名前を選択してください</p>
-                            <select id="uSelect" class="w-full p-4 bg-slate-50 border-2 rounded-2xl text-lg mb-8 font-bold outline-none focus:border-blue-500 appearance-none text-center">
-                                <option value="" disabled selected>名前を選択</option>
-                                ${SUBJECTS.map(s => `<option value="${s}">${s}</option>`).join('')}
-                            </select>
-                            <button onclick="checkUser()" class="w-full bg-blue-600 text-white font-bold py-5 rounded-2xl shadow-lg active:scale-95 transition-all text-lg">次へ進む</button>
-                            <p class="mt-16 text-[10px] text-slate-300 font-bold uppercase tracking-widest leading-none">Version ${VERSION}</p>
-                        </div>`;
+                    app.innerHTML = `<div class="w-full py-10 text-center"><h2 class="text-2xl font-black mb-8 text-slate-800 border-b-4 border-blue-500 pb-2 inline-block">お名前を選択</h2><p class="text-slate-500 text-sm mb-6 font-bold">ご自身のお名前を選択してください</p><select id="uSelect" class="w-full p-4 bg-slate-50 border-2 rounded-2xl text-lg mb-8 font-bold outline-none focus:border-blue-500 appearance-none text-center"><option value="" disabled selected>名前を選択</option>${SUBJECTS.map(s => `<option value="${s}">${s}</option>`).join('')}</select><button onclick="checkUser()" class="w-full bg-blue-600 text-white font-bold py-5 rounded-2xl shadow-lg active:scale-95 transition-all text-lg">次へ進む</button><p class="mt-16 text-[10px] text-slate-300 font-bold uppercase tracking-widest leading-none">Version ${VERSION}</p></div>`;
                 } else {
-                    app.innerHTML = `
-                        <div class="w-full py-10 text-center flex flex-col justify-center flex-grow animate-in fade-in duration-300">
-                            <div class="mb-10">
-                                <div class="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl font-bold">？</div>
-                                <h2 class="text-xl font-bold text-slate-800 leading-relaxed">あなたは<br><span class="text-4xl font-black text-blue-600 my-2 block">${tempSelectedName}</span><br>さんであってますか？</h2>
-                            </div>
-                            <div class="space-y-4">
-                                <button onclick="saveUser()" class="w-full bg-blue-600 text-white font-bold py-5 rounded-2xl shadow-lg active:scale-95 transition-all text-lg tracking-widest">はい、私です</button>
-                                <button onclick="tempSelectedName='';render();" class="w-full bg-slate-100 text-slate-500 font-bold py-4 rounded-2xl active:scale-95 transition-all">いいえ、戻ります</button>
-                            </div>
-                        </div>`;
+                    app.innerHTML = `<div class="w-full py-10 text-center flex flex-col justify-center flex-grow animate-in fade-in duration-300"><div class="mb-10"><div class="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl font-bold">？</div><h2 class="text-xl font-bold text-slate-800 leading-relaxed">あなたは<br><span class="text-4xl font-black text-blue-600 my-2 block">${tempSelectedName}</span><br>さんであってますか？</h2></div><div class="space-y-4"><button onclick="saveUser()" class="w-full bg-blue-600 text-white font-bold py-5 rounded-2xl shadow-lg active:scale-95 transition-all text-lg tracking-widest">はい、私です</button><button onclick="tempSelectedName='';render();" class="w-full bg-slate-100 text-slate-500 font-bold py-4 rounded-2xl active:scale-95 transition-all">いいえ、戻ります</button></div></div>`;
                 }
                 return;
             }
 
             if (currentMode) {
                 const defs = VAS_DEFS[currentMode];
-                const isNight = currentMode === "夕食2時間後";
-                app.innerHTML = `
-                    <div class="w-full flex flex-col min-h-full">
-                        <div class="flex justify-between items-center mb-8">
-                            <h2 class="text-xl font-black text-slate-800">${currentMode} <span class="text-xs font-bold text-blue-500 ml-1">(${viewingOffset === 0 ? '今日' : '昨日'}分)</span></h2>
-                            <button onclick="currentMode=null;render()" class="text-slate-300 p-2 text-xl">✕</button>
-                        </div>
-                        <div class="space-y-12 mb-10">
-                            ${defs.map((d, i) => `
-                                <div class="space-y-4">
-                                    <div class="flex justify-between items-end px-1">
-                                        <label class="font-bold text-slate-700 text-sm leading-tight w-3/4">${d.n}</label>
-                                        <span id="v-${i}" class="text-4xl font-black text-blue-600 italic leading-none">--</span>
-                                    </div>
-                                    <div class="px-1">
-                                        <div class="flex justify-between text-[10px] font-black text-slate-300 mb-1"><span>0</span><span>50</span><span>100</span></div>
-                                        <input type="range" min="0" max="100" value="50" oninput="upd(${i}, this.value)" class="vas-slider">
-                                        <div class="flex justify-between text-[10px] font-bold text-slate-400 mt-2 gap-4">
-                                            <span class="w-1/3 text-left leading-tight">${d.l}</span>
-                                            <span class="w-1/3 text-center text-blue-100 italic">50</span>
-                                            <span class="w-1/3 text-right leading-tight">${d.r}</span>
-                                        </div>
-                                    </div>
-                                </div>`).join('')}
-                        </div>
-                        ${isNight ? `
-                        <div class="border-t border-slate-100 pt-10 space-y-8 pb-10">
-                            <h3 class="font-black text-blue-600 text-sm border-l-4 border-blue-500 pl-3 uppercase tracking-widest">調査チェックリスト</h3>
-                            <div class="space-y-4">
-                                <label class="text-[12px] font-bold text-slate-500 block">2. サプリ摂取状況</label>
-                                <select id="q_intake" onchange="document.getElementById('rb').classList.toggle('hidden', this.value !== '飲んでいない')" class="w-full p-4 bg-slate-50 border-2 rounded-xl font-bold outline-none focus:border-blue-500 appearance-none"><option>飲んだ</option><option>飲んでいない</option></select>
-                                <div id="rb" class="hidden p-4 bg-red-50 rounded-xl"><select id="q_intake_reason" class="w-full p-2 rounded-lg border font-bold text-sm outline-none"><option value="">理由を選択</option><option value="飲み忘れ">飲み忘れ</option><option value="体調不良">体調不良</option><option value="外出">外出</option><option value="多忙">多忙</option><option value="その他">その他</option></select></div>
-                            </div>
-                            <div class="space-y-4">
-                                <label class="text-[12px] font-bold text-slate-500 block">3. 間食（カロミル以外）</label>
-                                <select id="q_snack" class="w-full p-4 bg-slate-50 border-2 rounded-xl font-bold outline-none focus:border-blue-500 appearance-none"><option>とらなかった</option><option>1回とった</option><option>2回とった</option><option>3回以上</option></select>
-                            </div>
-                            <div class="space-y-6 pt-4 border-t">
-                                <p class="text-[12px] font-bold text-slate-500">4. お腹の調子（排便状況）</p>
-                                <select id="q_bowel_count" class="w-full p-4 bg-slate-50 border-2 rounded-xl font-bold mb-4 text-sm outline-none focus:border-blue-500 appearance-none"><option value="" disabled selected>排便回数</option><option>なし</option><option>1回</option><option>2回以上</option></select>
-                                <select id="q_bowel_status" onchange="document.getElementById('bd').classList.toggle('hidden', !this.value.includes('気になる'))" class="w-full p-4 bg-slate-50 border-2 rounded-xl font-bold text-xs outline-none focus:border-blue-500 appearance-none"><option>特に変わりない</option><option>改善した</option><option>気になる変化がある</option></select>
-                                <div id="bd" class="hidden mt-2"><textarea id="q_bowel_detail" class="w-full p-4 bg-white border-2 rounded-xl text-sm h-24 outline-none focus:border-blue-500" placeholder="詳細を入力"></textarea></div>
-                            </div>
-                            <div class="space-y-4 pt-4 border-t">
-                                <p class="text-[12px] font-bold text-slate-500">5. 有害事象（異変）</p>
-                                <select id="q_adverse" onchange="document.getElementById('ab').classList.toggle('hidden', this.value !== 'あり')" class="w-full p-4 bg-slate-50 border-2 rounded-xl font-bold outline-none focus:border-blue-500 appearance-none"><option>特になし</option><option>あり</option></select>
-                                <div id="ab" class="hidden mt-2"><textarea id="q_adverse_detail" class="w-full p-4 bg-white border-2 rounded-xl text-sm h-24 outline-none focus:border-blue-500" placeholder="具体的な内容と時間"></textarea></div>
-                            </div>
-                            <textarea id="q_comment" class="w-full p-4 bg-slate-50 border-2 rounded-3xl h-40 text-sm focus:border-blue-500 outline-none" placeholder="自由記述（気づいたこと、感想など）"></textarea>
-                        </div>` : ''}
-                        <div class="mt-8 pb-20">
-                            <button id="sBtn" onclick="send()" disabled class="w-full bg-blue-600 text-white font-black py-5 rounded-[2rem] shadow-xl opacity-30 tracking-widest transition-all italic text-lg tracking-widest">データを送信する</button>
-                        </div>
-                    </div>`;
+                app.innerHTML = `<div class="w-full flex flex-col min-h-full"><div class="flex justify-between items-center mb-8"><h2 class="text-xl font-black text-slate-800">${currentMode} <span class="text-xs font-bold text-blue-500 ml-1">(${viewingOffset === 0 ? '今日' : '昨日'}分)</span></h2><button onclick="currentMode=null;render()" class="text-slate-300 p-2 text-xl">✕</button></div><div class="space-y-12 mb-10">${defs.map((d, i) => `<div class="space-y-4"><div class="flex justify-between items-end px-1"><label class="font-bold text-slate-700 text-sm leading-tight w-3/4">${d.n}</label><span id="v-${i}" class="text-4xl font-black text-blue-600 italic leading-none">--</span></div><div class="px-1"><div class="flex justify-between text-[10px] font-black text-slate-300 mb-1"><span>0</span><span>50</span><span>100</span></div><input type="range" min="0" max="100" value="50" oninput="upd(${i}, this.value)" class="vas-slider"><div class="flex justify-between text-[10px] font-bold text-slate-400 mt-2 gap-4"><span class="w-1/3 text-left leading-tight">${d.l}</span><span class="w-1/3 text-center text-blue-100 italic">50</span><span class="w-1/3 text-right leading-tight">${d.r}</span></div></div></div>`).join('')}</div>${currentMode === "夕食2時間後" ? `<div class="border-t border-slate-100 pt-10 space-y-8 pb-10"><h3 class="font-black text-blue-600 text-sm border-l-4 border-blue-500 pl-3 uppercase tracking-widest">調査チェックリスト</h3><div class="space-y-4"><label class="text-[12px] font-bold text-slate-500 block">2. サプリ摂取状況</label><select id="q_intake" onchange="document.getElementById('rb').classList.toggle('hidden', this.value !== '飲んでいない')" class="w-full p-4 bg-slate-50 border-2 rounded-xl font-bold outline-none focus:border-blue-500 appearance-none"><option>飲んだ</option><option>飲んでいない</option></select><div id="rb" class="hidden p-4 bg-red-50 rounded-xl"><select id="q_intake_reason" class="w-full p-2 rounded-lg border font-bold text-sm outline-none"><option value="">理由を選択</option><option value="飲み忘れ">飲み忘れ</option><option value="体調不良">体調不良</option><option value="外出">外出</option><option value="多忙">多忙</option><option value="その他">その他</option></select></div></div><div class="space-y-4"><label class="text-[12px] font-bold text-slate-500 block">3. 間食（カロミル以外）</label><select id="q_snack" class="w-full p-4 bg-slate-50 border-2 rounded-xl font-bold outline-none focus:border-blue-500 appearance-none"><option>とらなかった</option><option>1回とった</option><option>2回とった</option><option>3回以上</option></select></div><div class="space-y-6 pt-4 border-t"><p class="text-[12px] font-bold text-slate-500">4. お腹の調子（排便状況）</p><select id="q_bowel_count" class="w-full p-4 bg-slate-50 border-2 rounded-xl font-bold mb-4 text-sm outline-none focus:border-blue-500 appearance-none"><option value="" disabled selected>排便回数</option><option>なし</option><option>1回</option><option>2回以上</option></select><select id="q_bowel_status" onchange="document.getElementById('bd').classList.toggle('hidden', !this.value.includes('気になる'))" class="w-full p-4 bg-slate-50 border-2 rounded-xl font-bold text-xs outline-none focus:border-blue-500 appearance-none"><option>特に変わりない</option><option>改善した</option><option>気になる変化がある</option></select><div id="bd" class="hidden mt-2"><textarea id="q_bowel_detail" class="w-full p-4 bg-white border-2 rounded-xl text-sm h-24 outline-none focus:border-blue-500" placeholder="詳細を入力"></textarea></div></div><div class="space-y-4 pt-4 border-t"><p class="text-[12px] font-bold text-slate-500">5. 有害事象（異変）</p><select id="q_adverse" onchange="document.getElementById('ab').classList.toggle('hidden', this.value !== 'あり')" class="w-full p-4 bg-slate-50 border-2 rounded-xl font-bold outline-none focus:border-blue-500 appearance-none"><option>特になし</option><option>あり</option></select><div id="ab" class="hidden mt-2"><textarea id="q_adverse_detail" class="w-full p-4 bg-white border-2 rounded-xl text-sm h-24 outline-none focus:border-blue-500" placeholder="具体的な内容と時間"></textarea></div></div><textarea id="q_comment" class="w-full p-4 bg-slate-50 border-2 rounded-3xl h-40 text-sm focus:border-blue-500 outline-none" placeholder="自由記述（気づいたこと、感想など）"></textarea></div>` : ''}<div class="mt-8 pb-20"><button id="sBtn" onclick="send()" disabled class="w-full bg-blue-600 text-white font-black py-5 rounded-[2rem] shadow-xl opacity-30 transition-all italic text-lg tracking-widest">データを送信する</button></div></div>`;
                 return;
             }
 
-            app.innerHTML = `
-                <div class="w-full animate-in fade-in duration-500">
-                    <header class="flex justify-between items-start mb-6 pt-4 px-2">
-                        <div>
-                            <h1 class="text-2xl font-black text-slate-900 tracking-tighter leading-none text-blue-600">AKK-EVIDENCE</h1>
-                            <div class="flex items-center gap-2 mt-2 text-blue-600 font-black text-[10px] tracking-widest uppercase italic">
-                                <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                                ${userName} <span class="text-slate-300 font-normal ml-1">/ ${dateStr}</span>
-                            </div>
-                        </div>
-                        <div class="bg-slate-900 text-white text-[10px] font-black px-4 py-2 rounded-full shadow-lg leading-none">${dayText.split(' ')[0]}</div>
-                    </header>
-
-                    <div class="flex p-1 bg-slate-100 rounded-2xl mb-8">
-                        <button onclick="changeDate(0)" class="flex-1 py-3 rounded-xl font-bold text-sm transition-all ${viewingOffset === 0 ? 'tab-active shadow-md' : 'tab-inactive'}">今日</button>
-                        <button onclick="changeDate(-1)" class="flex-1 py-3 rounded-xl font-bold text-sm transition-all ${viewingOffset === -1 ? 'tab-active shadow-md' : 'tab-inactive'}">昨日分を入力</button>
-                    </div>
-
-                    <div class="space-y-4">
-                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Progress of the Day</p>
-                        ${Object.keys(VAS_DEFS).map(mode => {
-                            const isDone = !!completedTasks[mode];
-                            // 重複防止: 送信済みならクリック不可、スタイルを不透明に
-                            return `<button 
-                                ${isDone ? 'disabled' : `onclick="setM('${mode}')"`} 
-                                class="w-full flex items-center justify-between p-6 rounded-[2rem] border transition-all ${isDone ? 'bg-slate-50 border-slate-50 opacity-40 grayscale cursor-default' : 'bg-white border-slate-100 shadow-sm active:bg-slate-50 active:scale-[0.98]'}">
-                                <span class="font-black text-slate-800 text-lg leading-none">${mode}</span>
-                                ${isDone ? '<span class="text-emerald-500 font-bold text-[10px] uppercase tracking-widest underline decoration-emerald-200 underline-offset-4">Sent ✅</span>' : '<span class="text-slate-200 text-xl font-bold">＞</span>'}
-                            </button>`;
-                        }).join('')}
-                    </div>
-                    
-                    ${viewingOffset === -1 ? `<p class="mt-8 bg-amber-50 text-amber-700 text-[10px] p-4 rounded-xl font-bold leading-relaxed border border-amber-100 italic text-center">※「昨日分」を表示しています。送信済みの項目はロックされます。</p>` : ''}
-
-                    <div class="mt-24 text-center"><button onclick="resetApp()" class="text-[9px] text-slate-300 font-bold uppercase tracking-widest underline underline-offset-4 decoration-slate-100">登録情報をリセットする</button></div>
-                    <p class="text-center text-[8px] text-slate-100 mt-10 tracking-[0.4em] font-bold uppercase leading-none">System ${VERSION} Stable Release</p>
-                </div>`;
+            app.innerHTML = `<div class="w-full animate-in fade-in duration-500"><header class="flex justify-between items-start mb-6 pt-4 px-2"><div><h1 class="text-2xl font-black text-slate-900 tracking-tighter text-blue-600">AKK-EVIDENCE</h1><div class="flex items-center gap-2 mt-2 text-blue-600 font-black text-[10px] tracking-widest uppercase"><span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>${userName} <span class="text-slate-300 font-normal ml-1">/ ${dateStr}</span></div></div><div class="bg-slate-900 text-white text-[10px] font-black px-4 py-2 rounded-full shadow-lg">${dayText.split(' ')[0]}</div></header><div class="flex p-1 bg-slate-100 rounded-2xl mb-8"><button onclick="changeDate(0)" class="flex-1 py-3 rounded-xl font-bold text-sm transition-all ${viewingOffset === 0 ? 'tab-active shadow-md' : 'tab-inactive'}">今日</button><button onclick="changeDate(-1)" class="flex-1 py-3 rounded-xl font-bold text-sm transition-all ${viewingOffset === -1 ? 'tab-active shadow-md' : 'tab-inactive'}">昨日分を入力</button></div><div class="space-y-4"><p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] px-2">Progress Tracker</p>${Object.keys(VAS_DEFS).map(mode => { const isDone = !!completedTasks[mode]; return `<button ${isDone ? 'disabled' : `onclick="setM('${mode}')"`} class="w-full flex items-center justify-between p-6 rounded-[2rem] border transition-all ${isDone ? 'bg-slate-50 border-slate-50 opacity-40 grayscale cursor-default' : 'bg-white border-slate-100 shadow-sm active:bg-slate-50 active:scale-[0.98]'}"><span class="font-black text-slate-800 text-lg leading-none">${mode}</span>${isDone ? '<span class="text-emerald-500 font-bold text-[10px] uppercase tracking-widest underline decoration-emerald-200 underline-offset-4">Sent ✅</span>' : '<span class="text-slate-200 text-xl font-bold">＞</span>'}</button>`; }).join('')}</div><div class="mt-24 text-center"><button onclick="resetApp()" class="text-[9px] text-slate-300 font-bold uppercase tracking-widest underline underline-offset-4 decoration-slate-100">登録情報をリセットする</button></div><p class="text-center text-[8px] text-slate-100 mt-10 tracking-[0.4em] font-bold uppercase leading-none">System ${VERSION} Enterprise Sync Mode</p></div>`;
         }
 
-        window.changeDate = (offset) => {
-            if (isProcessing) return;
-            viewingOffset = offset;
-            render();
-        };
-
+        window.changeDate = (offset) => { if (!isProcessing) { viewingOffset = offset; render(); } };
         window.checkUser = () => { const v = document.getElementById('uSelect').value; if (!v) return; tempSelectedName = v; render(); };
         window.saveUser = () => { if (!tempSelectedName) return; userName = tempSelectedName; localStorage.setItem(KEY_USER, userName); render(); };
-        window.resetApp = () => { if(confirm("登録名をリセットしますか？（送信履歴は保持されます）")){ localStorage.removeItem(KEY_USER); location.reload(); } };
-        
-        window.setM = (m) => { 
-            // 2重ガード: ロジック側でも送信済みなら入らせない
-            const completed = getCompletedTasks();
-            if (completed[m]) {
-                alert("この項目は既に送信済みです。");
-                return;
-            }
-            currentMode = m; 
-            touchedSet = new Set(); 
-            render(); 
-            window.scrollTo(0, 0); 
-        };
-
-        window.upd = (idx, val) => { 
-            document.getElementById(`v-${idx}`).innerText = val; 
-            touchedSet.add(idx); 
-            if (touchedSet.size === VAS_DEFS[currentMode].length) { 
-                const b = document.getElementById('sBtn'); 
-                if (b) { b.disabled = false; b.classList.remove('opacity-30'); } 
-            } 
-        };
+        window.resetApp = () => { if(confirm("登録名をリセットしますか？（履歴は保持されます）")){ localStorage.removeItem(KEY_USER); location.reload(); } };
+        window.setM = (m) => { if (getCompletedTasks()[m]) return alert("送信済みです。"); currentMode = m; touchedSet = new Set(); render(); window.scrollTo(0, 0); };
+        window.upd = (idx, val) => { document.getElementById(`v-${idx}`).innerText = val; touchedSet.add(idx); if (touchedSet.size === VAS_DEFS[currentMode].length) { const b = document.getElementById('sBtn'); if (b) { b.disabled = false; b.classList.remove('opacity-30'); } } };
 
         window.send = async () => {
             const modeAtSend = currentMode;
             const { dayText, dateStr } = getTargetInfo();
             const completedAtSend = getCompletedTasks();
-            
-            // 最終ガード: 送信ボタン押下時にも再チェック
-            if (completedAtSend[modeAtSend]) {
-                alert("この項目は既に送信済みです。");
-                currentMode = null; render();
-                return;
+            if (completedAtSend[modeAtSend]) return alert("送信済みです。");
+
+            // 同時送信先の決定
+            const destinations = [MASTER_URL]; // 統合シート
+            const individualUrl = WEB_APP_URLS[userName];
+            if (individualUrl && individualUrl !== MASTER_URL) {
+                destinations.push(individualUrl); // 個別シート（空でなければ追加）
             }
 
-            if (!confirm(`【${viewingOffset === 0 ? '今日' : '昨日'}分（${dateStr}）】の「${modeAtSend}」を送信します。よろしいですか？`)) return;
+            if (!confirm(`【${viewingOffset === 0 ? '今日' : '昨日'}分（${dateStr}）】のデータを送信します。よろしいですか？`)) return;
 
-            if (!WEB_APP_URL) return alert("URL未設定です。設定を確認してください。");
             isProcessing = true;
             document.getElementById('processing-overlay').style.display = 'flex';
-            const btn = document.getElementById('sBtn');
-            btn.disabled = true; btn.innerText = "送信中...";
+            const btn = document.getElementById('sBtn'); btn.disabled = true; btn.innerText = "送信中...";
 
             const ranges = document.querySelectorAll('input[type="range"]');
             const payload = {
@@ -308,30 +164,21 @@
             };
 
             try {
-                await fetch(WEB_APP_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+                // 並列で送信
+                await Promise.all(destinations.map(url => 
+                    fetch(url, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) })
+                ));
                 
-                // 完了状態を新しいキーで保存
-                const updatedCompleted = { ...completedAtSend, [modeAtSend]: true };
-                localStorage.setItem(PREFIX_DONE + dateStr, JSON.stringify(updatedCompleted));
-                
+                localStorage.setItem(PREFIX_DONE + dateStr, JSON.stringify({ ...completedAtSend, [modeAtSend]: true }));
                 document.getElementById('processing-overlay').style.display = 'none';
-                
-                if (modeAtSend === "夕食2時間後") {
-                    alert("お疲れ様でした。明日もよろしくお願いします！");
-                } else {
-                    alert("送信完了しました");
-                }
-                currentMode = null; 
-                isProcessing = false;
-                render();
+                alert(modeAtSend === "夕食2時間後" ? "お疲れ様でした。明日もよろしくお願いします！" : "送信完了しました");
+                currentMode = null; isProcessing = false; render();
             } catch (e) { 
                 document.getElementById('processing-overlay').style.display = 'none';
                 alert("送信エラーが発生しました。インターネット環境を確認してください。");
-                btn.disabled = false; btn.innerText = "データを送信する";
-                isProcessing = false;
+                btn.disabled = false; isProcessing = false;
             }
         };
-
         window.onload = () => { setTimeout(render, 300); };
     </script>
 </body>
